@@ -31,6 +31,8 @@ def octants():
     import ogr
     import gdal
 
+    file_tmp = open(tmp, 'w')
+
     gdal.UseExceptions()
 
     drv_name = "ESRI Shapefile"
@@ -50,12 +52,13 @@ def octants():
         fid = feature.GetFID()
         field_names = feature.keys()
         field_contents = feature.items()
-        field_geom = feature.geometry()
+        # field_geom = feature.geometry()
 
         geomr = feature.GetGeometryRef()
         box = geomr.GetEnvelope()
-        xs, ys = _get_points(geomr)
-        box_octants = _box_octants(box)
+        for points in _point_octants_get(box):
+            write_points(file_tmp, points)
+    file_tmp.close()
 
 #        octs = _get_octants_as_points(lines)
 
@@ -74,24 +77,15 @@ def octants():
     fi_shp = None
 
 
-def _get_points(geom):
-    """
-    para la geometría de una feature geom1, crea 8 geometrías con los octantes
-    """
-    for ring in geom:
-        npoints = ring.GetPointCount()
-        points = [ring.GetPoint(i) for i in range(npoints)]
-    xs = [p[0] for p in points]
-    ys = [p[1] for p in points]
-    return xs, ys
-
-
-def _box_octants(box):
+def _point_octants_get(box: []):
     """
     genera los puntos de los 8 octantes
 
     input
     box: tuple de 4 elementos float con los valores de xmin xmax, ymin, ymax
+
+    output
+    a list
     """
     lengthx = abs(box[0] - box[1])
     lengthy = abs(box[2] - box[3])
@@ -100,14 +94,24 @@ def _box_octants(box):
     lx_point = lx_oct / float(NPXOCT)
     ly_point = ly_oct / float(NPYOCT)
 
-    oct1 = _points_octant(box[0], box[2], lx_point, ly_point, NPXOCT, NPYOCT)
-    xmin, ymin = _xymin_oct(oct1, NPXOCT-1)
-    oct2 = _points_octant(xmin, ymin, lx_point, ly_point, NPXOCT, NPYOCT)
+    x0 = box[0]
+    y0 = box[1]
+    for i in range(NXOCT):
+        x0 = x0 + float(i) * lx_oct
+        y0 = y0 + float(i) * ly_oct
+        yield(_points_octant(x0, y0, lx_point, ly_point, NPXOCT, NPYOCT))
+
+    x0 = box[0]
+    y0 = box[1] + ly_oct
+    for i in range(NXOCT):
+        x0 = x0 + float(i) * lx_oct
+        y0 = y0 + float(i) * ly_oct
+        yield(_points_octant(x0, y0, lx_point, ly_point, NPXOCT, NPYOCT))
 
 
 def _xymin_oct(octante, n):
     """
-    devuelve los valores xmin y ymin d eun octante
+    devuelve los valores xmin y ymin de un octante
     """
     return octante[n][0], octante[n][1]
 
@@ -180,15 +184,13 @@ def _get_lines_as_points(xs, ys):
     return lines
 
 
-def write_points(xy: []):
+def write_points(fo, xy: []):
     """
     escribo un array de puntos
     """
-    fo = open('tmp.txt', 'w')
+    fo.write('\n')
     for xy1 in xy:
         fo.write('{:f}\t{:f}\n'.format(xy1[0], xy1[1]))
-    fo.close()
-
 
 # def _get_octants_as_points(lines):
 #    """
