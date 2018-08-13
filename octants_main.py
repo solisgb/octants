@@ -19,16 +19,11 @@ if __name__ == "__main__":
 
         xtime = time() - startTime
         print('The script took {0}'.format(str(timedelta(seconds=xtime))))
-    except ValueError as error:
+    except Exception as error:
         logging.error(traceback.format_exc())
         msg = '\n{}'.format(traceback.format_exc())
         lf.write(error.__doc__)
         lf.write(msg)
-        print('Se ha producido un error')
-    else:
-        logging.error(traceback.format_exc())
-        msg = '\n{}'.format(traceback.format_exc())
-        print('Se ha producido un error inesperado')
     finally:
         lf.to_file()
         print('Se ha escrito el fichero log.txt con las incidencias')

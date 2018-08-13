@@ -7,7 +7,6 @@ Created on Thu Jul 19 19:16:33 2018
 lee el shp que contiene los límites de hojas 1:50000
     y genera un nuevo shp de octantes
 """
-import numpy as np
 
 # número de divisiones de octantes en el eje X
 NXOCT = 4
@@ -16,7 +15,7 @@ NYOCT = 2
 # número de puntos en el eje X del octante (NPXOCT + 1)
 NPXOCT = 4
 # número de puntos en el eje Y del octante (NPYOCT + 1)
-NPYOCT = 4
+NPYOCT = 2
 
 
 def octants():
@@ -31,7 +30,7 @@ def octants():
     import ogr
     import gdal
 
-    file_tmp = open(tmp, 'w')
+    file_tmp = open('tmp.txt', 'w')
 
     gdal.UseExceptions()
 
@@ -40,6 +39,8 @@ def octants():
 
     drv = ogr.GetDriverByName(drv_name)
     fi_shp = drv.Open(data_file_name, 0)
+    if fi_shp is None:
+        raise ValueError('No se puede abrir {}'.format(data_file_name))
     layer = fi_shp.GetLayer()
     if layer.GetGeomType() != 3:
         raise ValueError('La capa de fichero debe ser de tipo polígono')
@@ -56,13 +57,14 @@ def octants():
 
         geomr = feature.GetGeometryRef()
         box = geomr.GetEnvelope()
+        file_tmp.write('{}\t{}\t{}\t{}\n'.format(*box))
         for points in _point_octants_get(box):
             write_points(file_tmp, points)
     file_tmp.close()
 
 #        octs = _get_octants_as_points(lines)
 
-        # Create ring
+#        Create ring
 #        ring = ogr.Geometry(ogr.wkbLinearRing)
 #        ring.AddPoint(lrX, lrY)
 #        ring.AddPoint(lrX, ulY)
@@ -70,7 +72,7 @@ def octants():
 #        ring.AddPoint(ulX, lrY)
 #        ring.AddPoint(lrX, lrY)
 
-        # Create polygon
+#        Create polygon
 #        poly = ogr.Geometry(ogr.wkbPolygon)
 #        poly.AddGeometry(ring)
 
@@ -135,7 +137,6 @@ def _points_octant(xmin, ymin, lx_point, ly_point, NPXOCT, NPYOCT):
     for i in range(NPYOCT + 1):
         xy.append((xy[-1][0], xy[-1][1] - ly_point))
     xy.append((xmin, ymin))
-    write_points(xy)
     return xy
 
 
