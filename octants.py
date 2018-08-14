@@ -8,15 +8,6 @@ lee el shp que contiene los límites de hojas 1:50000
     y genera un nuevo shp de octantes
 """
 
-# número de divisiones de octantes en el eje X
-NXOCT = 4
-# número de divisiones de octantes en el eje Y
-NYOCT = 2
-# número de puntos en el eje X del octante (NPXOCT + 1)
-NPXOCT = 4
-# número de puntos en el eje Y del octante (NPYOCT + 1)
-NPYOCT = 2
-
 
 def octants():
     """
@@ -89,26 +80,28 @@ def _point_octants_get(box: []):
     output
     a list
     """
-    lengthx = abs(box[0] - box[1])
-    lengthy = abs(box[2] - box[3])
-    lx_oct = lengthx / float(NXOCT)
-    ly_oct = lengthy / float(NYOCT)
-    lx_point = lx_oct / float(NPXOCT)
-    ly_point = ly_oct / float(NPYOCT)
+    import octants_parameters as par
+
+    lx_ign_polygon = abs(box[0] - box[1])
+    ly_ign_polygon = abs(box[2] - box[3])
+    lx_oct = lx_ign_polygon / float(par.NXOCT)
+    ly_oct = ly_ign_polygon / float(par.NYOCT)
+    lx_point = lx_oct / float(par.NPXOCT + 2 - 1)
+    ly_point = ly_oct / float(par.NPYOCT + 2 - 1)
 
     x0 = box[0]
     y0 = box[1]
-    for i in range(NXOCT):
+    for i in range(par.NXOCT):
         x0 = x0 + float(i) * lx_oct
         y0 = y0 + float(i) * ly_oct
-        yield(_points_octant(x0, y0, lx_point, ly_point, NPXOCT, NPYOCT))
+        yield(_points_octant(x0, y0, lx_point, ly_point))
 
     x0 = box[0]
     y0 = box[1] + ly_oct
-    for i in range(NXOCT):
+    for i in range(par.NXOCT):
         x0 = x0 + float(i) * lx_oct
         y0 = y0 + float(i) * ly_oct
-        yield(_points_octant(x0, y0, lx_point, ly_point, NPXOCT, NPYOCT))
+        yield(_points_octant(x0, y0, lx_point, ly_point))
 
 
 def _xymin_oct(octante, n):
@@ -118,23 +111,34 @@ def _xymin_oct(octante, n):
     return octante[n][0], octante[n][1]
 
 
-def _points_octant(xmin, ymin, lx_point, ly_point, NPXOCT, NPYOCT):
+def _points_octant(xmin, ymin, lx_point, ly_point):
     """
     genera las coordenadas de un octante a partir de las coordenadas de la
         esquina inferior izquierda
+
+    input
+    xmin: x esquina inferior izquierda del primer octante
+    ymin: y esquina inferior izquierda del primer octante
+    lx_point: delta x entre puntos del octante
+    ly_point: delta y entre puntos del octante
+
+    output
+    xy: lista cada elemento (xi, yi) -coordenadas de los puntos del cotante-
     """
+    import octants_parameters as par
+
     # linea inferior
     xy = [(xmin, ymin)]
-    for i in range(NPXOCT):
+    for i in range(par.NPXOCT + 1):
         xy.append((xy[-1][0] - lx_point, xy[-1][1]))
     # linea derecha
-    for i in range(NPYOCT + 1):
+    for i in range(par.NPYOCT + 1):
         xy.append((xy[-1][0], xy[-1][1] + ly_point))
     # linea superior
-    for i in range(NPXOCT + 1):
+    for i in range(par.NPXOCT + 1):
         xy.append((xy[-1][0] + lx_point, xy[-1][1]))
     # linea izquierda
-    for i in range(NPYOCT + 1):
+    for i in range(par.NPYOCT):
         xy.append((xy[-1][0], xy[-1][1] - ly_point))
     xy.append((xmin, ymin))
     return xy
