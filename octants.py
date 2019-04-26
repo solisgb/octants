@@ -8,210 +8,187 @@ lee el shp que contiene los límites de hojas 1:50000
     y genera un nuevo shp de octantes
 """
 
+sql0 = ["set client_encoding to utf8;",
+        "set standard_conforming_strings to on;",
+        "select dropgeometrytable('mtn50oct');",
+        "begin;",
+        "drop table if exists mtn50oct;",
+        "create schema if not exists ign;",
+        "create table if not exists ign.mtn50oct (",
+        "    gid serial primary key,",
+        "    oct_clas varchar(11) unique);",
+        "select AddGeometryColumn('ign','mtn50oct','geom',4019,'MULTIPOLYGON',2);"]
 
-def octants():
+sql2 = 'create index mtn50oct_gist on mtn50oct using gist (geom);\ncommit;\n'
+
+
+
+sfmtpsql = ("insert into mtn50oct (oct_clas, geom)",
+            "values ('{0}-{1:d}',",
+            "ST_GeomFromEWKT('SRID=4019;MULTIPOLYGON((({2})))'));\n")
+fmtpoint = "%0.6f %0.6f"
+
+
+def octants(dir_data, fshp):
     """
     lee el shp que contiene los límites de hojas 1:50000
         y genera un nuevo shp de octantes
-    El nombre del shp de datos y resultados los toma del módulo
-        octants_parameters
+    input
+    dir_data: directorio del fichero ign shp de hojas del mtn50 (string)
+    fshp: nombre y extensión del fichero shp (string)
+    output
+    null
     """
-    from os.path import join
-    import octants_parameters as par
+    from os.path import join, isfile
     import ogr
     import gdal
 
-    file_tmp = open('tmp.txt', 'w')
-
     gdal.UseExceptions()
 
+    file_out = 'mtn50oct_epsg4019.sql'
     drv_name = "ESRI Shapefile"
-    data_file_name = join(par.dir_dat, par.file_dat)
+    data_file_name = join(dir_data, fshp)
+    if not isfile(data_file_name):
+        raise ValueError('No se puede abrir {}'.format(data_file_name))
 
     drv = ogr.GetDriverByName(drv_name)
     fi_shp = drv.Open(data_file_name, 0)
-    if fi_shp is None:
-        raise ValueError('No se puede abrir {}'.format(data_file_name))
     layer = fi_shp.GetLayer()
     if layer.GetGeomType() != 3:
         raise ValueError('La capa de fichero debe ser de tipo polígono')
-    fCount = layer.GetFeatureCount()
+    nfeatures = layer.GetFeatureCount()
     print('\n{}\n{}\nFeatures number: {:d}'.format(data_file_name,
           layer.GetSpatialRef(),
-          fCount))
+          nfeatures))
 
-    for feature in layer:
-        fid = feature.GetFID()
-        field_names = feature.keys()
-        field_contents = feature.items()
-        # field_geom = feature.geometry()
+    fout = open(join(dir_data, file_out), 'w')
+    line = '\n'.join(sql0)
+    fout.write('{}\n'.format(line))
 
-        geomr = feature.GetGeometryRef()
-        box = geomr.GetEnvelope()
-        file_tmp.write('{}\t{}\t{}\t{}\n'.format(*box))
-        for points in _point_octants_get(box):
-            write_points(file_tmp, points)
-    file_tmp.close()
-
-#        octs = _get_octants_as_points(lines)
-
-#        Create ring
-#        ring = ogr.Geometry(ogr.wkbLinearRing)
-#        ring.AddPoint(lrX, lrY)
-#        ring.AddPoint(lrX, ulY)
-#        ring.AddPoint(ulX, ulY)
-#        ring.AddPoint(ulX, lrY)
-#        ring.AddPoint(lrX, lrY)
-
-#        Create polygon
-#        poly = ogr.Geometry(ogr.wkbPolygon)
-#        poly.AddGeometry(ring)
-
-    fi_shp = None
-
-
-def _point_octants_get(box: []):
-    """
-    genera los puntos de los 8 octantes
-
-    input
-    box: tuple de 4 elementos float con los valores de xmin xmax, ymin, ymax
-
-    output
-    a list
-    """
-    import octants_parameters as par
-
-    lx_ign_polygon = abs(box[0] - box[1])
-    ly_ign_polygon = abs(box[2] - box[3])
-    lx_oct = lx_ign_polygon / float(par.NXOCT)
-    ly_oct = ly_ign_polygon / float(par.NYOCT)
-    lx_point = lx_oct / float(par.NPXOCT + 2 - 1)
-    ly_point = ly_oct / float(par.NPYOCT + 2 - 1)
-
-    x0 = box[0]
-    y0 = box[1]
-    for i in range(par.NXOCT):
-        x0 = x0 + float(i) * lx_oct
-        y0 = y0 + float(i) * ly_oct
-        yield(_points_octant(x0, y0, lx_point, ly_point))
-
-    x0 = box[0]
-    y0 = box[1] + ly_oct
-    for i in range(par.NXOCT):
-        x0 = x0 + float(i) * lx_oct
-        y0 = y0 + float(i) * ly_oct
-        yield(_points_octant(x0, y0, lx_point, ly_point))
-
-
-def _xymin_oct(octante, n):
-    """
-    devuelve los valores xmin y ymin de un octante
-    """
-    return octante[n][0], octante[n][1]
-
-
-def _points_octant(xmin, ymin, lx_point, ly_point):
-    """
-    genera las coordenadas de un octante a partir de las coordenadas de la
-        esquina inferior izquierda
-
-    input
-    xmin: x esquina inferior izquierda del primer octante
-    ymin: y esquina inferior izquierda del primer octante
-    lx_point: delta x entre puntos del octante
-    ly_point: delta y entre puntos del octante
-
-    output
-    xy: lista cada elemento (xi, yi) -coordenadas de los puntos del cotante-
-    """
-    import octants_parameters as par
-
-    # linea inferior
-    xy = [(xmin, ymin)]
-    for i in range(par.NPXOCT + 1):
-        xy.append((xy[-1][0] - lx_point, xy[-1][1]))
-    # linea derecha
-    for i in range(par.NPYOCT + 1):
-        xy.append((xy[-1][0], xy[-1][1] + ly_point))
-    # linea superior
-    for i in range(par.NPXOCT + 1):
-        xy.append((xy[-1][0] + lx_point, xy[-1][1]))
-    # linea izquierda
-    for i in range(par.NPYOCT):
-        xy.append((xy[-1][0], xy[-1][1] - ly_point))
-    xy.append((xmin, ymin))
-    return xy
-
-
-def _direc(deltax, deltay):
-    """
-    determina la dirección
-    """
-    if deltax < deltay:
-        return 'V'
-    elif deltax > deltay:
-        return 'H'
-    else:
-        raise ValueError('deltax EQ deltay')
-
-
-def _get_lines_as_points(xs, ys):
-    """
-    A partir de los puntos de un poligono de una hoja 1:50000, seleccciona
-        las líneas
-    """
-    direc0 = None
-    points = [(xs[0], ys[0])]
-    lines = []
-    for i, (x1, y1) in enumerate(zip(xs[1:], ys[1:])):
-        deltax = abs(x1 - xs[i])
-        deltay = abs(y1 - ys[i])
-        if direc0 is None:
-            direc0 = _direc(deltax, deltay)
-            points.append((x1, y1))
+    for ifeat, feature in enumerate(layer):
+        print('{0:d}/{1:d}'.format(ifeat+1, nfeatures))
+        h50 = feature.GetField('mtn50_clas')
+        geom = feature.GetGeometryRef()
+        ring = geom.GetGeometryRef(0)
+        npoints = ring.GetPointCount()
+        if npoints != 33:
             continue
-        direc = _direc(deltax, deltay)
-        if direc != direc0:
-            lines.append(points)
-            points = [(xs[i], ys[i])]
-            points.append((x1, y1))
-            direc0 = direc
-        else:
-            points.append((x1, y1))
-    lines.append(points)
-    fo = open('tmp.txt', 'w')
-    for line in lines:
-        for xy in line:
-            fo.write('{:f}\t{:f}\n'.format(xy[0], xy[1]))
-        fo.write('\n')
-    fo.close()
-    return lines
+        points = [ring.GetPoint(i) for i in range(0, npoints)]
+        x = [point[0] for point in points]
+        y = [point[1] for point in points]
+        sqls = octantes_aswnt(h50, x, y)
+
+        for sql1 in sqls:
+            fout.write('{}'.format(sql1))
+        fout.write('\n')
+        if ifeat == 99999999:
+            break
+    fout.write(sql2)
+    fout.close()
 
 
-def write_points(fo, xy: []):
+def octantes_aswnt(h50, x, y):
     """
-    escribo un array de puntos
+    genera los octantes a partir de las coordenadas x e y de los puntos
+        que definen la geometría de la hoja
+    input
+    h50: nombre de la hoja 1:50000 ign (string)
+    x: lista de reales x coord.
+    y: lista de reales y coord.
+    output
+    lista desentencias sql para insertar lo octantes como multipolígono
     """
-    fo.write('\n')
-    for xy1 in xy:
-        fo.write('{:f}\t{:f}\n'.format(xy1[0], xy1[1]))
+    xmax = max(x)
+    xmin = min(x)
+    ymax = max(y)
+    ymin = min(y)
+    deltax = abs((xmin-xmax)/4.)
+    deltay = (ymax-ymin)/2.
+    ymedio = ymax - deltay
+    fmtpsql = ' '.join(sfmtpsql)
+    sql = []
 
-# def _get_octants_as_points(lines):
-#    """
-#    forma los octantes a partir de las 4 líneas de una hoja
-#    """
-#    lengths = []
-#    for line in lines:
-#        cut_points = []
-#        deltax = abs(line[0][0] - line[1][0])
-#        deltay = abs(line[0][1] - line[1][1])
-#        direc = _direc(deltax, deltay)
-#        length = length(np.linalg.norm((line[0][0], line[0][1]),
-#                              (line[-1][0], line[-1][1])))
-#        length = sqrt((line[0][0] - line[-1][0])**2 +
-#                      (line[0][1] - line[-1][1])**2)
-#        if direc == 'H':
-#            length_oct = length / 4.
-#        else:
-#            length_oct = length / 2.
+    # octante1
+    points = []
+    points.append(fmtpoint % (xmin, ymax))    # 1
+    x1 = xmin + deltax
+    points.append(fmtpoint % (x1, ymax))      # 2
+    points.append(fmtpoint % (x1, ymedio))    # 3
+    points.append(fmtpoint % (xmin, ymedio))  # 4
+    points.append(fmtpoint % (xmin, ymax))    # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 1, cadena_points))
+
+    # octante2
+    points = []
+    points.append(fmtpoint % (x1, ymax))      # 1
+    x2 = x1 + deltax
+    points.append(fmtpoint % (x2, ymax))      # 2
+    points.append(fmtpoint % (x2, ymedio))    # 3
+    points.append(fmtpoint % (x1, ymedio))    # 4
+    points.append(fmtpoint % (x1, ymax))      # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 2, cadena_points))
+
+    # octante3
+    points = []
+    points.append(fmtpoint % (x2, ymax))      # 1
+    x3 = x2 + deltax
+    points.append(fmtpoint % (x3, ymax))      # 2
+    points.append(fmtpoint % (x3, ymedio))    # 3
+    points.append(fmtpoint % (x2, ymedio))    # 4
+    points.append(fmtpoint % (x2, ymax))      # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 3, cadena_points))
+
+    # octante4
+    points = []
+    points.append(fmtpoint % (x3, ymax))      # 1
+    points.append(fmtpoint % (xmax, ymax))    # 2
+    points.append(fmtpoint % (xmax, ymedio))  # 3
+    points.append(fmtpoint % (x3, ymedio))    # 4
+    points.append(fmtpoint % (x3, ymax))      # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 4, cadena_points))
+
+    # octante5
+    points = []
+    points.append(fmtpoint % (xmin, ymedio))    # 1
+    points.append(fmtpoint % (x1, ymedio))      # 2
+    points.append(fmtpoint % (x1, ymin))        # 3
+    points.append(fmtpoint % (xmin, ymin))      # 4
+    points.append(fmtpoint % (xmin, ymedio))    # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 5, cadena_points))
+
+    # octante6
+    points = []
+    points.append(fmtpoint % (x1, ymedio))      # 1
+    points.append(fmtpoint % (x2, ymedio))      # 2
+    points.append(fmtpoint % (x2, ymin))    # 3
+    points.append(fmtpoint % (x1, ymin))    # 4
+    points.append(fmtpoint % (x1, ymedio))      # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 6, cadena_points))
+
+    # octante7
+    points = []
+    points.append(fmtpoint % (x2, ymedio))      # 1
+    points.append(fmtpoint % (x3, ymedio))      # 2
+    points.append(fmtpoint % (x3, ymin))        # 3
+    points.append(fmtpoint % (x2, ymin))        # 4
+    points.append(fmtpoint % (x2, ymedio))      # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 7, cadena_points))
+
+    # octante8
+    points = []
+    points.append(fmtpoint % (x3, ymedio))      # 1
+    points.append(fmtpoint % (xmax, ymedio))    # 2
+    points.append(fmtpoint % (xmax, ymin))      # 3
+    points.append(fmtpoint % (x3, ymin))        # 4
+    points.append(fmtpoint % (x3, ymedio))      # 1
+    cadena_points = ','.join(points)
+    sql.append(fmtpsql.format(h50, 8, cadena_points))
+
+    return sql
